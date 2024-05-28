@@ -1,0 +1,146 @@
+How to properly make a swap file onto a separated disk partition:
+
+# Using blkid to get proper drive information
+# The partition where I want to make my swap file is /dev/sda2
+# We need to grab the UUID of /dev/sda2 > sudo blkid /dev/sda2
+
+LABEL="XXXX" UUID="33cXXXXX-303b-XXXX-beXX-2462XXXXXfbX" BLOCK_SIZE="4096" TYPE="ext4" PARTLABEL="KRYPT" PARTUUID="40a7eXXX-aa6b-XXXX-aa01-XXXXX6004442"
+
+# Now we need to create an entry in /etc/fstab for the drive to be mountable from the terminal using the mount/umount commands > sudo nano /etc/fstab 
+
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a device; this may
+# be used with UUID= as a more robust way to name devices that works even if
+# disks are added and removed. See fstab(5).
+#
+	# <file system>             		 <mount point>  	 <type>  <options>  								<dump>  <pass>
+	UUID=XXXX-C608                            /boot/efi      	 vfat    fmask=0137,dmask=0027 	   						0 	   2
+	UUID=2d942XXX-XXXX-4b22-XXXX-64c9cba3XXXX /              	 ext4    noatime    		   						0          1
+	tmpfs                                     /tmp           	 tmpfs   defaults,noatime,mode=1777     					0          0
+	UUID=33cXXXXX-303b-XXXX-beXX-2462XXXXXfbX /run/media/user/XXXX   ext4    nofail,x-systemd.automount,x-systemd.device-timeout=5       		0          0
+
+#Now we added the 4th line, longstory short: <file system> Is used to enter drives UUID's or PARTUUID's, also independent folder file systems like tmpfs and swap or swapfile > UUID=33cXXXXX-303b-XXXX-beXX-2462XXXXXfbX
+					     <mount point> Is used to determine where the drive will be mounted, in our case it is where all the common external or internal partitions are mounted on a linux system > /run/media/user/
+					     <type> Is the filesystem type 
+					     <options> Is to determine how the filesystem is going to be mounted
+					     
+#Here is a list of general mount options:   defaults: Uses the default mount options: rw, suid, dev, exec, auto, nouser, and async.
+					    ro: Mount the file system read-only.
+					    rw: Mount the file system read-write.
+					    auto: Mount automatically at boot time or when mount -a is run.
+					    noauto: Do not mount automatically at boot time or when mount -a is run.
+					    user: Allow a normal user to mount the file system.
+					    nouser: Only the superuser can mount the file system.
+					    exec: Allow the execution of binaries.
+					    noexec: Do not allow the execution of binaries.
+					    suid: Allow set-user-identifier or set-group-identifier bits to take effect.
+					    nosuid: Do not allow set-user-identifier or set-group-identifier bits to take effect.
+					    dev: Interpret character or block special devices on the file system.
+					    nodev: Do not interpret character or block special devices on the file system.
+					    sync: All I/O to the file system should be done synchronously.
+					    async: All I/O to the file system should be done asynchronously.
+					    atime: Update the file's access time when the file is read.
+					    noatime: Do not update the file's access time when the file is read.
+					    relatime: Update the file's access time only if the previous access time is older than the current modify or change time.
+					    
+					     <dump> It is used by the dump command, which is a historical Unix backup utility. This field indicates whether the file system needs to be backed up.
+					     		    0: The file system will not be considered by the dump utility for backup.
+    							    1: The file system will be considered by the dump utility for backup.
+							    Most modern systems do not use the dump utility, so this field is often set to 0.
+					     <pass> It is used by the fsck utility, which is responsible for checking the integrity of file systems at boot time. This field determines the order in which file systems should be checked.
+					     		        0: The file system will not be checked.
+    								1: The file system will be checked first. This should be used for the root file system (/).
+   								2: The file system will be checked after those with a <pass> value of 1. Other non-root file systems typically use this value.
+   					     The fsck utility will check the file systems in the order specified by the <pass> values. The root file system is checked first, followed by other file systems in sequence.
+   					     
+# Explanation:
+
+nofail: The nofail option tells the system to continue the boot process even if the specified file system fails to mount. In our case we want to make sure that the system wont reboot into a black screen if a mistake was made 
+x-systemd.automount: The x-systemd.automount option tells systemd to set up an automount unit for the file system. After being set for an option we need the reload systemd deamons using the command > sudo systemctl daemon-reload
+x-systemd.device-timeout=5: The x-systemd.device-timeout=5 option specifies a timeout period (in seconds) that systemd should wait for the device to become available. If the device is not available systemd will skip to next task.
+   								
+With this setup we made sure that the drive where the swapfile is located will be automaticly mounted at boot, and if you made a mistake while making the configuration it is no big deal, your system will boot to display-manager anyway. 								
+   								
+Verify you have no errors within the /etc/fstab file by typing this command > sudo findmnt --verify
+At this stage no errors should have been made, if you dohave errors, please make sure to corect them prior to go forward with the swapfile. 
+
+# Mount the drive > sudo mount UUID=33cXXXXX-303b-XXXX-beXX-2462XXXXXfbX
+# Navigate into the drive > cd /run/media/user/XXXX 
+# Now we need to create the swapfile, consider creating a swap file the same size as your amount of RAM - I have 12G > sudo dd if=/dev/zero of=swapfile bs=1MiB count=$((12*1024))
+# Set the swapfile permission so only sudo can write to it > sudo chmod 600 swapfile
+# We need to make sure that the swapfile is configured with all the info we can give it, such as LABEL and UUID
+# Create a new valid UUID > new_uuid=$(uuidgen)
+			  > echo new_uuid
+			    10f2b0f6-c384-4794-9b64-8828ef0c1d89
+# Decide a label name for the swapfile and use the newly generated UUID in the following command
+ 
+sudo mkswap -L SWAPFILE -U 10f2b0f6-c384-4794-9b64-8828ef0c1d89 swapfile
+
+# Now we need to add the swapfile into the /etc/fstab file > sudo nano /etc/fstab
+<file system>           	  <mount point>  	 <type>  <options>  		<dump>  <pass>
+/run/media/user/XXXX/swapfile  	  none  	 	 swap  	 sw  			  0       0
+
+# Now your /etc/fstab file should look like this : # <file system>             		      <mount point>  	 	<type>  <options>  								<dump>  <pass>
+						    UUID=XXXX-C608                            /boot/efi      	 	vfat    fmask=0137,dmask=0027 	   						0 	   2
+						    UUID=2d942XXX-XXXX-4b22-XXXX-64c9cba3XXXX /              	 	ext4    noatime    		   						0          1
+						    tmpfs                                     /tmp           	 	tmpfs   defaults,noatime,mode=1777     						0          0
+						    UUID=33cXXXXX-303b-XXXX-beXX-2462XXXXXfbX /run/media/user/XXXX      ext4    nofail,x-systemd.automount,x-systemd.device-timeout=5       		0          0
+						    /run/media/user/XXXX/swapfile  	      none  	 	 	swap  	sw  			  						0          0
+						    
+# Save and exit nano 
+# Activate the swapfile > sudo swapon /run/media/paulgrey/KRYPT/swapfile
+# Verify that the swapfile is active : sudo swapon --show 
+# This command will list all active swap spaces. You should see your swap file in the output if it's activated.
+
+# you should get something like this : NAME                               TYPE SIZE USED PRIO
+				       /run/media/paulgrey/KRYPT/swapfile file  12G   0B   -2
+				    
+# Restart systemd daemons > sudo systemctl daemon-reload
+# Now we need to verify that all our configuration is working > sudo findmnt --verify
+								none
+   								[W] non-bind mount source /run/media/paulgrey/KRYPT/swapfile is a directory or regular file
+								0 parse errors, 0 errors, 1 warning				    
+								
+# We get this warning because none seems to be invalid for findmnt command, however, it does not matter we dont have any errors showing as for the /etc/fstab file. 
+
+# Verify the memory being used using > free -h
+# This command displays total, used, and free swap space along with memory usage. Look under the "Swap" section to see the details.
+# You should get something like this :
+							       total        used        free      shared  buff/cache   available
+						Mem:            11Gi       4.3Gi       5.1Gi        15Mi       2.4Gi       7.2Gi
+						Swap:           11Gi          0B        11Gi
+
+# Use swapon to Display Swap Information > sudo swapon --summary
+						
+						Filename				Type		Size		Used		Priority
+						/run/media/paulgrey/KRYPT/swapfile      file		12582908	0		-2
+						
+# To monitor swap usage over time, you can use vmstat > vmstat 2 5 
+						
+						procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------
+						 r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
+						 1  0      0 5303340 121976 2432364    0    0   336   159 1322    3  2  1 97  0  0  0
+						 0  0      0 5303844 121976 2432400    0    0     0    26  666 2325  1  0 99  0  0  0
+						 0  0      0 5309884 121976 2432400    0    0     0   396  559 1883  1  1 99  0  0  0
+						 0  0      0 5304784 121984 2432400    0    0     0   246  696 3346  1  1 98  0  0  0
+						 0  0      0 5248580 122008 2432456    0    0     0   256  680 2016  1  1 98  0  0  0
+
+# Verify the swapfile has proper permissions >  ls -lh /run/media/user/XXXX/swapfile
+						-rw------- 1 root root 12G May 22 12:42 /run/media/user/XXXX/swapfile
+						
+# Check system logs for errors > sudo dmesg | grep -i swap
+
+						[    0.083123] Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+						[    0.799682] zswap: loaded using pool zstd/zsmalloc
+						[    1.408971] systemd[1]: Reached target Swaps.
+						[    6.858399] Adding 12582908k swap on /run/media/user/XXXX/swapfile.  Priority:-2 extents:8 across:13434876k
+						[ 5065.790286] Adding 12582908k swap on /run/media/user/XXXX/swapfile.  Priority:-2 extents:8 across:13434876k
+						
+# If you want to change the usage priority of your swap space since you might only have one swap space or swap file, here is how to do it: 
+# Turn theswap off > sudo swapoff /run/media/user/XXXX/swapfile
+# Change the priority > sudo swapon --priority 10 /run/media/user/XXXX/swapfile  
+# Verify the new priority setting > sudo swapon --show=PRIO
+ 				    PRIO
+				    10
+						
